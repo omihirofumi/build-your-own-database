@@ -4,6 +4,24 @@ const Io = std.Io;
 
 const PORT = 8083;
 
+fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
+    defer stream.close(io);
+
+    log.info("TCP connection established!", .{});
+
+    var read_buf: [1024]u8 = undefined;
+    var write_buf: [1024]u8 = undefined;
+    var reader = stream.reader(io, &read_buf);
+    var writer = stream.writer(io, &write_buf);
+
+    var http_server = std.http.Server.init(&reader.interface, &writer.interface);
+    var req = http_server.receiveHead() catch @panic("failed to receive header.");
+    log.info("header: \n", .{});
+    log.info("{s}", .{req.head_buffer});
+
+    req.respond("hello", .{}) catch @panic("failed to respond.");
+}
+
 pub fn main(init: std.process.Init) !void {
     log.info("Listening on http://127.0.0.1:{d}", .{PORT});
 
@@ -13,23 +31,14 @@ pub fn main(init: std.process.Init) !void {
     var server = try addr.listen(io, .{ .reuse_address = true });
     defer server.deinit(io);
 
+    var group: std.Io.Group = .init;
+    defer group.cancel(io);
+
     while (true) {
         log.info("Waiting for connection...", .{});
         var stream = try server.accept(io);
-        defer stream.close(io);
-
-        log.info("TCP connection established!", .{});
-
-        var read_buf: [1024]u8 = undefined;
-        var write_buf: [1024]u8 = undefined;
-        var reader = stream.reader(io, &read_buf);
-        var writer = stream.writer(io, &write_buf);
-
-        var http_server = std.http.Server.init(&reader.interface, &writer.interface);
-        var req = try http_server.receiveHead();
-        log.info("header: \n", .{});
-        log.info("{s}", .{req.head_buffer});
-
-        try req.respond("hello", .{});
+        group.async(io, handleStream, .{ io, &stream });
     }
+
+    try group.await(io);
 }
