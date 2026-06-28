@@ -15,11 +15,18 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
     var writer = stream.writer(io, &write_buf);
 
     var http_server = std.http.Server.init(&reader.interface, &writer.interface);
-    var req = http_server.receiveHead() catch @panic("failed to receive header.");
-    log.info("header: \n", .{});
-    log.info("{s}", .{req.head_buffer});
+    while (true) {
+        var req = http_server.receiveHead() catch |err| switch (err) {
+            error.HttpConnectionClosing => return,
+            else => return,
+        };
+        log.info("header: \n", .{});
+        log.info("{s}", .{req.head_buffer});
 
-    req.respond("hello", .{}) catch @panic("failed to respond.");
+        req.respond("hello", .{}) catch |err| {
+            log.err("failed to respond: {}", .{err});
+        };
+    }
 }
 
 pub fn main(init: std.process.Init) !void {
