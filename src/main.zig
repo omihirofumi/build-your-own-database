@@ -10,14 +10,23 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
     log.info("TCP connection established!", .{});
 
     var read_buf: [1024]u8 = undefined;
-    var chunks: [1][]u8 = .{read_buf[0..]};
+    // var chunks: [1][]u8 = .{read_buf[0..]};
 
-    const n = stream.read(io, &chunks) catch |err| {
-        log.err("read failed: {}", .{err});
-        return;
+    var reader = stream.reader(io, &read_buf);
+    const in = &reader.interface;
+
+    const nstr = in.peek(4) catch |err| switch (err) {
+        error.EndOfStream => {
+            log.info("EOF", .{});
+            return;
+        },
+        else => {
+            log.err("read failed: {}", .{err});
+            return;
+        },
     };
 
-    std.debug.print("{s}\n", .{read_buf[0..n]});
+    std.debug.print("{s}\n", .{nstr});
 }
 
 pub fn main(init: std.process.Init) !void {
