@@ -10,23 +10,14 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
     log.info("TCP connection established!", .{});
 
     var read_buf: [1024]u8 = undefined;
-    var write_buf: [1024]u8 = undefined;
-    var reader = stream.reader(io, &read_buf);
-    var writer = stream.writer(io, &write_buf);
+    var chunks: [1][]u8 = .{read_buf[0..]};
 
-    var http_server = std.http.Server.init(&reader.interface, &writer.interface);
-    while (true) {
-        var req = http_server.receiveHead() catch |err| switch (err) {
-            error.HttpConnectionClosing => return,
-            else => return,
-        };
-        log.info("header: \n", .{});
-        log.info("{s}", .{req.head_buffer});
+    const n = stream.read(io, &chunks) catch |err| {
+        log.err("read failed: {}", .{err});
+        return;
+    };
 
-        req.respond("hello", .{}) catch |err| {
-            log.err("failed to respond: {}", .{err});
-        };
-    }
+    std.debug.print("{s}\n", .{read_buf[0..n]});
 }
 
 pub fn main(init: std.process.Init) !void {
