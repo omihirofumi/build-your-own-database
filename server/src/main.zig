@@ -4,6 +4,10 @@ const Io = std.Io;
 
 const PORT = 8083;
 
+fn read4bytes(reader: *std.Io.Reader) ![]u8 {
+    return try reader.peek(4);
+}
+
 fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
     defer stream.close(io);
 
@@ -15,7 +19,7 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
     var reader = stream.reader(io, &read_buf);
     const in = &reader.interface;
 
-    const nstr = in.peek(4) catch |err| switch (err) {
+    const nstr = read4bytes(in) catch |err| switch (err) {
         error.EndOfStream => {
             log.info("EOF", .{});
             return;
@@ -25,8 +29,12 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
             return;
         },
     };
+    const n: u32 = std.fmt.parseUnsigned(u32, nstr, 10) catch {
+        log.err("failed to parse nstr to int", .{});
+        return;
+    };
 
-    std.debug.print("{s}\n", .{nstr});
+    std.debug.print("{d}\n", .{n});
 }
 
 pub fn main(init: std.process.Init) !void {
