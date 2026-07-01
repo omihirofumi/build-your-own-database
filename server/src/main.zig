@@ -5,10 +5,10 @@ const Io = std.Io;
 const PORT = 8083;
 
 fn read4bytes(reader: *std.Io.Reader) ![]u8 {
-    return try reader.peek(4);
+    return try reader.take(4);
 }
 
-fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
+fn handleStream(gpa: std.mem.Allocator, io: std.Io, stream: *std.Io.net.Stream) void {
     defer stream.close(io);
 
     log.info("TCP connection established!", .{});
@@ -29,12 +29,34 @@ fn handleStream(io: std.Io, stream: *std.Io.net.Stream) void {
             return;
         },
     };
-    const n: u32 = std.fmt.parseUnsigned(u32, nstr, 10) catch {
+    _ = std.fmt.parseUnsigned(u32, nstr, 10) catch {
         log.err("failed to parse nstr to int", .{});
         return;
     };
+    var cmd = std.ArrayList(u8).initCapacity(gpa, 4) catch {
+        log.err("failed to init array list(cmd)", .{});
+        return;
+    };
+    defer cmd.deinit(gpa);
 
-    std.debug.print("{d}\n", .{n});
+    const lenstr = read4bytes(in) catch |err| switch (err) {
+        error.EndOfStream => {
+            log.info("EOF", .{});
+            return;
+        },
+        else => {
+            log.err("read failed: {}", .{err});
+            return;
+        },
+    };
+    const len: u32 = std.fmt.parseUnsigned(u32, lenstr, 10) catch {
+        log.err("failed to parse len", .{});
+        return;
+    };
+    const body = in.peek(len) catch @panic("panic!!");
+    // add to array
+
+    std.debug.print("{s}\n", .{body});
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -52,7 +74,7 @@ pub fn main(init: std.process.Init) !void {
     while (true) {
         log.info("Waiting for connection...", .{});
         var stream = try server.accept(io);
-        group.async(io, handleStream, .{ io, &stream });
+        group.async(io, handleStream, .{ init.gpa, io, &stream });
     }
 
     try group.await(io);
